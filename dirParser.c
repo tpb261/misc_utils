@@ -51,17 +51,33 @@ typedef struct _FS_Object_
     int numFiles;
 }FS_Object;
 
+typedef void*(*fpNftwCb)(void*, FS_Object *);
+
+typedef struct _dirContent_s
+{
+    char           *name;
+    char          **pat;
+    char          **antiPat;
+    fpNftwCb        callback;
+    int            *nFiles;
+    int            *nSubDirs;
+    FS_Object    ***pDirs;
+    FS_Object    ***pFiles;
+    void           *cbArgs;
+    FS_Object      *parent;
+}dirContent_t;
+
 #define CHK_FREE(p) if(p) free (p)
 
 #if 0
-/** 
+/**
  * Get the nth-level parent of the given FS object
  * Also, sets the name, from that parent till this object's parent
  *
  * @param F     object whose parent is required
  * @param n     nth parent
  * @param name  name from nth-parne to 1st parent
- * 
+ *
  * @return FS_object of the n-th parent
  */
 FS_Object* getToNthPaent (FS_Object *F, int n, char **name)
@@ -88,27 +104,11 @@ FS_Object* getToNthPaent (FS_Object *F, int n, char **name)
 }
 #endif
 
-/** 
- * returns number of folders along the path given
- * 
- * @param path Path for which depth is required
- * 
- * @return depth of folder/file
- */
-static int getPathDepth (char *path)
-{
-    int depth = 0;
-    for(;path && *path; path++)
-        if(*path == PATH_SEP_CHR && *(path+1)) /* ignore the final / or \ */
-            depth++;
-    return depth;
-}
-
-/** 
+/**
  * Get the full path and filename in one string
- * 
+ *
  * @param F  FS_Object whose name is required
- * 
+ *
  * @return full name string
  */
 char *getFullName (FS_Object *f)
@@ -125,34 +125,49 @@ char *getFullName (FS_Object *f)
     else if(f->parent)
     {
         len = strlen (f->parent->baseName);
+        if(f->parent->dirName)
+        {
+            len += strlen (f->parent->dirName);
+            len++;
+        }
     }
     len += strlen (f->baseName);
     name = calloc (len+2, sizeof(char));
     if(f->dirName)
-        sprintf (name, "%s%c%s", f->dirName, '/', f->baseName);
+        sprintf (name, "%s%c%s", f->dirName, PATH_SEP_CHR, f->baseName);
+    else if (f->parent && f->parent->dirName)
+        sprintf (name, "%s%c%s%c%s", f->parent->dirName, PATH_SEP_CHR,
+                 f->parent->baseName,PATH_SEP_CHR, f->baseName);
     else if (f->parent)
-        sprintf (name, "%s%c%s", f->parent->baseName, '/', f->baseName);
+        sprintf (name, "%s%c%s", f->parent->baseName, PATH_SEP_CHR,
+                 f->baseName);
     else if (f->baseName)
         sprintf (name, "%s", f->baseName);
-    
+
     return(name);
 }
 
+#if 0
 static void* concatArrays (
     void **src,
     int *nSrc,
     void *dst,
     int nDst,
-    int eSize
+    int size
     )
 {
+    *src = realloc (*src, (*nSrc+nDst)*size);
+    memcpy (&(*src)[*nSrc], dst, nDst*size);
+    *nSrc += nDst;
+    return *src;
 }
+#endif
 
 static int getDirContents(
-    char *name,
-    char *pat[2],
-    char *antiPat[2],
-    void*(*callback)(void*, FS_Object *),
+    char  *name,
+    char **pat,
+    char **antiPat,
+    fpNftwCb callback,
     int *nFiles,
     int *nSubDirs,
     FS_Object ***pDirs,
@@ -167,7 +182,7 @@ static int getDirContents(
     int pathLen = strlen (name);
     int num = 0;
     void *result = NULL;
-    
+
     *pDirs = NULL;
     *pFiles = NULL;
     if((dir = opendir (name)) ==  NULL)
@@ -179,7 +194,7 @@ static int getDirContents(
     {
         int entNameLen = strlen (ent->d_name);
         int filePathen = pathLen + entNameLen;
-        FS_Object f;
+        FS_Object f = {0,};
         int i = 0;
         if ( ent->d_name[0] == '.')
             if (ent->d_name[1]==0 )
@@ -191,7 +206,7 @@ static int getDirContents(
         if((antiPat && antiPat[i] && strcasestr (ent->d_name, antiPat[i]))
            || (pat && pat[i]  && !strcasestr (ent->d_name, pat[i])))
             continue;
-        
+
         memset (&f, 0, sizeof(f));
         f.parent = parent;
         f.baseName   = calloc (entNameLen+1, sizeof(char));
@@ -225,11 +240,30 @@ static int getDirContents(
     closedir (dir);
 }
 
-/** 
+static void* getDirContentsThr(void *args)
+{
+    dirContent_t   *p          = (dirContent_t *)args;
+    char           *name       = p->name;
+    char          **pat        = p->pat;
+    char          **antiPat    = p->antiPat;
+    fpNftwCb        callback   = p->callback;
+    int            *nFiles     = p->nFiles;
+    int            *nSubDirs   = p->nSubDirs;
+    FS_Object    ***pDirs      = p->pDirs;
+    FS_Object    ***pFiles     = p->pFiles;
+    void           *cbArgs     = p->cbArgs;
+    FS_Object      *parent     = p->parent;
+
+    getDirContents (name, pat, antiPat, callback, nFiles, nSubDirs, pDirs,
+                    pFiles, cbArgs, parent);
+
+}
+
+/**
  * Parse given directories recursively. Popuate the dirs and files arrays
  * and the count of subdirs and files. Also, run callbacks if provided on
  * the files and subdirs. Default implementation is BFS. Can run DFS too.
- * 
+ *
  * @param paths        directory to parse
  * @param numPaths     number of paths input
  * @paths pat          patterns to include [0] for filename, [1] for directory
@@ -243,11 +277,11 @@ static int getDirContents(
  * @param doDFS        drill down directories as we find them
  */
 void
-parseDir(
+fasterNftw(
     my_string *paths,
     int numPaths,
-    char *pat[2],
-    char *antiPat[2],
+    char **pat,
+    char **antiPat,
     void*(*callback)(void*, FS_Object *),
     int *nFiles,
     int *nSubDirs,
@@ -262,6 +296,8 @@ parseDir(
     int num;
     int n = numPaths;
     int i;
+    int numThreads = 1;
+
     if(pDirs)
     {
         *pDirs = realloc (*pDirs, n*sizeof(FS_Object*));
@@ -276,48 +312,75 @@ parseDir(
         (*pDirs)[i] = (FS_Object*)calloc (sizeof(FS_Object), 1);
         if(paths[i][len-1] == PATH_SEP_CHR) len--;
         (*pDirs)[i]->baseName = calloc (1+len, sizeof(char));
-        (*pDirs)[i]->depth = getPathDepth (paths[i]);
+        (*pDirs)[i]->depth = getNumTokens (paths[i], PATH_SEP_CHR);
         memcpy ((*pDirs)[i]->baseName, paths[i], len);
     }
     if(*nSubDirs == 0)    *nSubDirs = numPaths;
 
-    for(i=0; i<numPaths; i++)
+    for(i=0; i<numPaths; )
     {
-        char *name = getFullName ((*pDirs)[i]);
-        FS_Object **dirs = NULL;
-        FS_Object **files = NULL;
-        int lnFiles = 0;
-        int lnSubDirs = 0;
-        getDirContents (name, pat, antiPat, callback, &lnFiles,
-                        &lnSubDirs, &dirs, &files, cbArgs, (*pDirs)[i]);
+        char **name        = calloc (sizeof(char*), numThreads);
+        FS_Object ***dirs  = calloc (sizeof(FS_Object **), numThreads);
+        FS_Object ***files = calloc (sizeof(FS_Object **), numThreads);
+        int *lnFiles       = calloc (sizeof(int), numThreads);
+        int *lnSubDirs     = calloc (sizeof(int), numThreads);
+        int t;
+        int numSubDirs = *nSubDirs;
+        int numFiles   = *nFiles;
+        int tmpNPaths  = numPaths;
 
-        *pDirs = realloc (*pDirs, (lnSubDirs + *nSubDirs)*sizeof(FS_Object*));
-        *pFiles = realloc (*pFiles, (lnFiles + *nFiles)*sizeof(FS_Object*));
-        
-        memcpy (&(*pDirs)[*nSubDirs], dirs, lnSubDirs * sizeof(FS_Object*));
-        memcpy (&(*pFiles)[*nFiles], files, lnFiles * sizeof(FS_Object*));
-        *nSubDirs += lnSubDirs;
-        *nFiles   += lnFiles;
-
-        CHK_FREE (dirs);
-        CHK_FREE (files);
-        CHK_FREE (name);
-        
-        if(doDFS)
+        for(t = 0; t<numThreads && i+t<numPaths; t++)
         {
-            int j;
-            for(j=0; j<lnSubDirs; j++)
+            dirContent_t s = {NULL, pat, antiPat, callback, lnFiles+t,
+                              lnSubDirs+t, dirs+t, files+t, cbArgs,
+                              (*pDirs)[i+t]};
+            name[t] = getFullName ((*pDirs)[i+t]);
+            s.name = name[t];
+            getDirContentsThr (&s);
+        }
+        /* join here */
+        for(t = 0; t<numThreads && i+t<numPaths; t++)
+        {
+            numSubDirs += lnSubDirs[t];
+            numFiles   += lnFiles[t];
+        }
+        *pDirs = realloc (*pDirs, (numSubDirs*sizeof(FS_Object*)));
+        *pFiles = realloc (*pFiles, (numFiles)*sizeof(FS_Object*));
+        for(t = 0; t<numThreads && i<numPaths; t++, i++)
+        {
+            memcpy (*pDirs+*nSubDirs, dirs[t], lnSubDirs[t] * sizeof(FS_Object*));
+            memcpy (*pFiles+*nFiles, files[t], lnFiles[t] * sizeof(FS_Object*));
+            *nSubDirs += lnSubDirs[t];
+            *nFiles   += lnFiles[t];
+            if(doDFS)
             {
-                char *name = getFullName ((*pDirs)[j+*nSubDirs]);
-                parseDir (&name, 1, pat, antiPat, callback, nFiles,
-                          nSubDirs, pDirs, pFiles, cbArgs, doDFS);
-                CHK_FREE (name);
+                int j;
+                for(j=0; j<lnSubDirs[t]; j++)
+                {
+                    char *name = getFullName ((*pDirs)[j+*nSubDirs]);
+                    fasterNftw (&name, 1, pat, antiPat, callback, nFiles,
+                              nSubDirs, pDirs, pFiles, cbArgs, doDFS);
+                    CHK_FREE (name);
+                }
+            }
+            else if(!doDFS)
+            {
+                tmpNPaths += lnSubDirs[t];
             }
         }
-        else if(!doDFS)
+        for(t=0; t<numThreads; t++)
         {
-            numPaths += lnSubDirs;
+            CHK_FREE (name[t]);
+            CHK_FREE (dirs[t]);
+            CHK_FREE (files[t]);
         }
+        CHK_FREE (name);
+        CHK_FREE (dirs);
+        CHK_FREE (files);
+        CHK_FREE (lnFiles);
+        CHK_FREE (lnSubDirs);
+
+        if(!doDFS) numPaths = tmpNPaths;
     }
 }
 
@@ -334,6 +397,7 @@ void* printer (void* fmt, FS_Object *f)
 
 }
 
+#if 1//UNIT_TESTS
 int main (int argc, char *argv[])
 {
     FS_Object **dirs = NULL;
@@ -344,7 +408,7 @@ int main (int argc, char *argv[])
     char *args[] = {"dir: %s\n", "file: %s\n"};
     char *pat[2] = {NULL, NULL};
     char *antiPat[2] = {NULL, NULL};
-    parseDir(argv+1, argc-1, NULL, NULL, NULL, &nFiles, &nSubDirs, &dirs,
+    fasterNftw(argv+1, argc-1, NULL, NULL, NULL, &nFiles, &nSubDirs, &dirs,
              &files, (void*)args, 0);
 
     for(i = 0; i<nSubDirs; i++)
@@ -356,7 +420,7 @@ int main (int argc, char *argv[])
     {
         printer (NULL, files[i]);
     }
-    
+
     for(i=0;i<nSubDirs; i++)
     {
         CHK_FREE (dirs[i]->baseName);
@@ -372,3 +436,4 @@ int main (int argc, char *argv[])
     CHK_FREE (dirs);
     CHK_FREE (files);
 }
+#endif
