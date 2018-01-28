@@ -24,10 +24,12 @@ OTHER DEALINGS IN THE SOFTWARE.
 
 For more information, please refer to <http://unlicense.org>
 
-	File: pgmIo.c
+	File: fasterNftw.c
 	Author: TPB (Halfwit genius)
 
 */
+
+#define UNIT_TESTS 0
 
 #include <stdio.h>
 #include <stdlib.h>
