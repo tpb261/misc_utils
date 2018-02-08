@@ -9,7 +9,7 @@
  */
 int getNumTokens (char *path, char token)
 {
-    int depth = 0;
+    int depth = path && *path==token?1:0;
     for(;path && *path; path++)
         if(*path == token && *(path+1)) /* ignore the final / or \ */
             depth++;
@@ -25,16 +25,20 @@ int getNumTokens (char *path, char token)
  * 
  * @return        number of tokens
  */
-int getTokens (char *path, char **tokens, char token)
+int getTokens (char *path, char ***tokens, char token)
 {
     int numTokens = getNumTokens (path, token);
     int i = 0;
     int j = 0;
-    tokens = calloc (numTokens, sizeof(char*));
-    for(i=0; i<numTokens; i++)
+    int k = 0;
+    *tokens = calloc (numTokens, sizeof(char*));
+    for(i=0; i<numTokens; i++, j++)
     {
-        tokens[i] = path+j;
-        for(j; path[j] && path[j]!=token; j++);
+        for(k=j; path[j] && path[j]!=token; j++);
+        printf ("%s \n", path+j);
+        (*tokens)[i] = calloc (j-k+1, sizeof(char));
+        memcpy ((*tokens)[i], path+k, j-k);
+        printf ("%s \n", (*tokens)[i]);
     }
 }
 

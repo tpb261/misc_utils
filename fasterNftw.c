@@ -28,48 +28,23 @@ For more information, please refer to <http://unlicense.org>
 	Author: TPB (Halfwit genius)
 
 */
+#include <fasterNftw.h>
 
-#define UNIT_TESTS 0
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <dirent.h>
-#include <sys/types.h>
-#include <errno.h>
-
-typedef char* my_string;
-
-#define PATH_SEP_CHR '/'
-#define PATH_SEP_STR "/"
-
-typedef struct _FS_Object_
+#if USE_MT_MODE
+#include <pthread.h>
+#else
+void pthread_create (
+    void *dummy,
+    void *thr_args,
+    void* (*threadFunc)(void *),
+    void *thrArgs)
 {
-    struct _FS_Object_ *parent;
-    char *baseName;
-    char *dirName; /*< we will not fill this for files to reduce memory usage */
-    int depth;
-    int numSubDirs;
-    int numFiles;
-}FS_Object;
+    return threadFunc (thrArgs);
+}
+#endif
 
 typedef void*(*fpNftwCb)(void*, FS_Object *);
-
-typedef struct _dirContent_s
-{
-    char           *name;
-    char          **pat;
-    char          **antiPat;
-    fpNftwCb        callback;
-    int            *nFiles;
-    int            *nSubDirs;
-    FS_Object    ***pDirs;
-    FS_Object    ***pFiles;
-    void           *cbArgs;
-    FS_Object      *parent;
-}dirContent_t;
-
-#define CHK_FREE(p) if(p) free (p)
 
 #if 0
 /**
@@ -261,6 +236,19 @@ static void* getDirContentsThr(void *args)
 
 }
 
+void* printer (void* fmt, FS_Object *f)
+{
+    char **args = (char**)fmt;
+    if(f)
+    {
+        char *name = getFullName (f);
+        printf ("%s %d %s:\n", f->dirName?"dir":"file", f->depth, name);
+        CHK_FREE (name);
+    }
+    return NULL;
+
+}
+
 /**
  * Parse given directories recursively. Popuate the dirs and files arrays
  * and the count of subdirs and files. Also, run callbacks if provided on
@@ -330,15 +318,21 @@ fasterNftw(
         int numSubDirs = *nSubDirs;
         int numFiles   = *nFiles;
         int tmpNPaths  = numPaths;
+        pthread_t *thrs = calloc (numThreads, sizeof(pthread_t));
 
         for(t = 0; t<numThreads && i+t<numPaths; t++)
         {
             dirContent_t s = {NULL, pat, antiPat, callback, lnFiles+t,
                               lnSubDirs+t, dirs+t, files+t, cbArgs,
-                              (*pDirs)[i+t]};
+                              (*pDirs)[i+t], t};
             name[t] = getFullName ((*pDirs)[i+t]);
             s.name = name[t];
-            getDirContentsThr (&s);
+            pthread_create (&thrs[t], NULL, getDirContentsThr, &s);
+//            getDirContentsThr (&s);
+        }
+        for(t = 0; t<numThreads && i+t<numPaths; t++)
+        {
+            pthread_join (thrs[t], NULL);
         }
         /* join here */
         for(t = 0; t<numThreads && i+t<numPaths; t++)
@@ -386,56 +380,46 @@ fasterNftw(
     }
 }
 
-void* printer (void* fmt, FS_Object *f)
+FS_Object*
+fileToFSObjs (
+    char *filename
+    )
 {
-    char **args = (char**)fmt;
-    if(f)
-    {
-        char *name = getFullName (f);
-        printf ("%s %d %s:\n", f->dirName?"dir":"file", f->depth, name);
-        CHK_FREE (name);
-    }
-    return NULL;
-
-}
-
-#if 1//UNIT_TESTS
-int main (int argc, char *argv[])
-{
-    FS_Object **dirs = NULL;
-    FS_Object **files = NULL;
+    int fid = -1;
     int i;
-    int nFiles = 0;
-    int nSubDirs = 0;
-    char *args[] = {"dir: %s\n", "file: %s\n"};
-    char *pat[2] = {NULL, NULL};
-    char *antiPat[2] = {NULL, NULL};
-    fasterNftw(argv+1, argc-1, NULL, NULL, NULL, &nFiles, &nSubDirs, &dirs,
-             &files, (void*)args, 0);
-
-    for(i = 0; i<nSubDirs; i++)
+    array *pathComps = calloc (sizeof(array), 1);
+    char **path = NULL;
+    FS_Object *o1 = NULL;
+    FS_Object *o2 = NULL;
+    int len = 0;
+    if(-1 == (fid = open (filename, O_RDONLY)))
     {
-        printer (NULL, dirs[i]);
+        return NULL;
     }
-
-    for(i = 0; i<nFiles; i++)
+    close (fid);
+    pathComps->num = getTokens (filename, &path, '/');
+    pathComps->data = (void*)path;
+    for(i = 0; i<pathComps->num; i++)
     {
-        printer (NULL, files[i]);
-    }
+        o1 = calloc (sizeof(FS_Object), 1);
+        o1->parent = o2;
+        o1->baseName = ((char**)pathComps->data)[i];
+        o1->depth = 1;
+        if(o2 && i!=pathComps->num-1)
+        {
+            len  = strlen (o2->baseName);
+            len += (o2->dirName?strlen (o2->dirName):0);
+            o1->dirName = calloc (len+2, sizeof(char));
+            if(o2->dirName)
+                sprintf (o1->dirName, "%s%c%s", o2->dirName, PATH_SEP_CHR,
+                         o2->baseName);
+            else
+                sprintf (o1->dirName, "%s", o2->baseName);
 
-    for(i=0;i<nSubDirs; i++)
-    {
-        CHK_FREE (dirs[i]->baseName);
-        CHK_FREE (dirs[i]);
+            o1->depth += o2->depth;
+        }
+        o2 = o1;
+        printer (NULL, o1);
     }
-
-    for(i = 0; i<nFiles; i++)
-    {
-        CHK_FREE (files[i]->baseName);
-        CHK_FREE (files[i]);
-    }
-
-    CHK_FREE (dirs);
-    CHK_FREE (files);
+    return o1;
 }
-#endif
