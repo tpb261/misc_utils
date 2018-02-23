@@ -29,12 +29,12 @@ For more information, please refer to <http://unlicense.org>
 
 */
 #include <fasterNftw.h>
+#include <strHelper.h>
 
-
-#if USE_MT_MODE
+#if 1//USE_MT_MODE
 #include <pthread.h>
 #else
-void pthread_create (
+void* pthread_create (
     void *dummy,
     void *thr_args,
     void* (*threadFunc)(void *),
@@ -42,87 +42,9 @@ void pthread_create (
 {
     return threadFunc (thrArgs);
 }
+
+#define  pthread_join(a, b)
 #endif
-
-typedef void*(*fpNftwCb)(void*, FS_Object *);
-
-#if 0
-/**
- * Get the nth-level parent of the given FS object
- * Also, sets the name, from that parent till this object's parent
- *
- * @param F     object whose parent is required
- * @param n     nth parent
- * @param name  name from nth-parne to 1st parent
- *
- * @return FS_object of the n-th parent
- */
-FS_Object* getToNthPaent (FS_Object *F, int n, char **name)
-{
-    int l;
-    FS_Object *f = F->parent;
-    int len = 0;
-    char *name1 = NULL;
-
-    for(l = 1; l<1 && f; l++, f=f->parent)
-        len += strlen (f->baseName);
-    len += strlen (f->baseName);
-
-    *name = realloc (*name, len*sizeof(char));
-    name1 = realloc (name1, len*sizeof(char));
-
-    for(f=F->parent, l=1; l<n && f; f=f->parent)
-    {
-        strcpy (name1, *name);
-        sprintf (*name, "%s/%s", f->baseName, name1);
-    }
-    CHK_FREE (name1);
-    return f;
-}
-#endif
-
-/**
- * Get the full path and filename in one string
- *
- * @param F  FS_Object whose name is required
- *
- * @return full name string
- */
-char *getFullName (FS_Object *f)
-{
-    char *name = NULL;
-    int len = 0;
-    int len1 = 0;
-    if(!f)
-        return NULL;
-    if(f->dirName != NULL)
-    {
-        len = strlen (f->dirName);
-    }
-    else if(f->parent)
-    {
-        len = strlen (f->parent->baseName);
-        if(f->parent->dirName)
-        {
-            len += strlen (f->parent->dirName);
-            len++;
-        }
-    }
-    len += strlen (f->baseName);
-    name = calloc (len+2, sizeof(char));
-    if(f->dirName)
-        sprintf (name, "%s%c%s", f->dirName, PATH_SEP_CHR, f->baseName);
-    else if (f->parent && f->parent->dirName)
-        sprintf (name, "%s%c%s%c%s", f->parent->dirName, PATH_SEP_CHR,
-                 f->parent->baseName,PATH_SEP_CHR, f->baseName);
-    else if (f->parent)
-        sprintf (name, "%s%c%s", f->parent->baseName, PATH_SEP_CHR,
-                 f->baseName);
-    else if (f->baseName)
-        sprintf (name, "%s", f->baseName);
-
-    return(name);
-}
 
 #if 0
 static void* concatArrays (
@@ -174,9 +96,8 @@ static int getDirContents(
         FS_Object f = {0,};
         int i = 0;
         if ( ent->d_name[0] == '.')
-            if (ent->d_name[1]==0 )
-                continue;
-            else if( ent->d_name[1]=='.' && ent->d_name[2]==0 )
+            if (ent->d_name[1]==0
+                || ( ent->d_name[1]=='.' && ent->d_name[2]==0 ))
                 continue;
 
         i = (ent->d_type == DT_DIR?1:0);
@@ -189,26 +110,19 @@ static int getDirContents(
         f.baseName   = calloc (entNameLen+1, sizeof(char));
         f.depth  = parent->depth+1;
         memcpy (f.baseName, ent->d_name, entNameLen+1);
-        if(callback) callback (cbArgs, &f);
-        switch(ent->d_type)
-        {
-        case DT_DIR:
+        if(callback) callback (&f, cbArgs);
+        if( ent->d_type == DT_DIR)
         {
             num = ++(*nSubDirs);
             ptr = pDirs;
             parent->numSubDirs++;
             f.dirName = getFullName (parent);
-            break;
         }
-        case DT_REG:
+	else if( ent->d_type == DT_REG)
         {
             num = ++(*nFiles);
             parent->numFiles++;
             ptr = pFiles;
-            break;
-        }
-        default:
-            continue;
         }
         *ptr = realloc (*ptr, num*sizeof(FS_Object*));
         (*ptr)[num-1] = (FS_Object*)calloc (sizeof(FS_Object), 1);
@@ -233,19 +147,6 @@ static void* getDirContentsThr(void *args)
 
     getDirContents (name, pat, antiPat, callback, nFiles, nSubDirs, pDirs,
                     pFiles, cbArgs, parent);
-
-}
-
-void* printer (void* fmt, FS_Object *f)
-{
-    char **args = (char**)fmt;
-    if(f)
-    {
-        char *name = getFullName (f);
-        printf ("%s %d %s:\n", f->dirName?"dir":"file", f->depth, name);
-        CHK_FREE (name);
-    }
-    return NULL;
 
 }
 
@@ -304,6 +205,7 @@ fasterNftw(
         (*pDirs)[i]->baseName = calloc (1+len, sizeof(char));
         (*pDirs)[i]->depth = getNumTokens (paths[i], PATH_SEP_CHR);
         memcpy ((*pDirs)[i]->baseName, paths[i], len);
+        if(callback) callback ((*pDirs)[i], cbArgs);
     }
     if(*nSubDirs == 0)    *nSubDirs = numPaths;
 
@@ -375,51 +277,9 @@ fasterNftw(
         CHK_FREE (files);
         CHK_FREE (lnFiles);
         CHK_FREE (lnSubDirs);
+        CHK_FREE (thrs);
 
         if(!doDFS) numPaths = tmpNPaths;
     }
 }
 
-FS_Object*
-fileToFSObjs (
-    char *filename
-    )
-{
-    int fid = -1;
-    int i;
-    array *pathComps = calloc (sizeof(array), 1);
-    char **path = NULL;
-    FS_Object *o1 = NULL;
-    FS_Object *o2 = NULL;
-    int len = 0;
-    if(-1 == (fid = open (filename, O_RDONLY)))
-    {
-        return NULL;
-    }
-    close (fid);
-    pathComps->num = getTokens (filename, &path, '/');
-    pathComps->data = (void*)path;
-    for(i = 0; i<pathComps->num; i++)
-    {
-        o1 = calloc (sizeof(FS_Object), 1);
-        o1->parent = o2;
-        o1->baseName = ((char**)pathComps->data)[i];
-        o1->depth = 1;
-        if(o2 && i!=pathComps->num-1)
-        {
-            len  = strlen (o2->baseName);
-            len += (o2->dirName?strlen (o2->dirName):0);
-            o1->dirName = calloc (len+2, sizeof(char));
-            if(o2->dirName)
-                sprintf (o1->dirName, "%s%c%s", o2->dirName, PATH_SEP_CHR,
-                         o2->baseName);
-            else
-                sprintf (o1->dirName, "%s", o2->baseName);
-
-            o1->depth += o2->depth;
-        }
-        o2 = o1;
-        printer (NULL, o1);
-    }
-    return o1;
-}

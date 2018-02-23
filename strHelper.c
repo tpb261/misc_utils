@@ -1,5 +1,14 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strHelper.h>
+
+#if STR_DBG_PRINTF
+#define str_dbg_printf printf
+#else
+#define str_dbg_printf(...)
+#endif
+
 /** 
  * returns number of folders along the path given
  * 
@@ -9,7 +18,7 @@
  */
 int getNumTokens (char *path, char token)
 {
-    int depth = path && *path==token?1:0;
+    int depth = path && *path?1:0;
     for(;path && *path; path++)
         if(*path == token && *(path+1)) /* ignore the final / or \ */
             depth++;
@@ -35,10 +44,12 @@ int getTokens (char *path, char ***tokens, char token)
     for(i=0; i<numTokens; i++, j++)
     {
         for(k=j; path[j] && path[j]!=token; j++);
-        printf ("%s \n", path+j);
+        str_dbg_printf ("%s:%d %s \n", __FUNCTION__, __LINE__, path+j);
         (*tokens)[i] = calloc (j-k+1, sizeof(char));
         memcpy ((*tokens)[i], path+k, j-k);
-        printf ("%s \n", (*tokens)[i]);
+        str_dbg_printf ("%s:%d %s %s\n", __FUNCTION__, __LINE__, (*tokens)[i], path+k);
     }
+    str_dbg_printf ("numTokens = %d\n", numTokens);
+    return numTokens;
 }
 
