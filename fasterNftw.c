@@ -173,7 +173,7 @@ fasterNftw(
     int numPaths,
     char **pat,
     char **antiPat,
-    void*(*callback)(void*, FS_Object *),
+    fpNftwCb callback,
     int *nFiles,
     int *nSubDirs,
     FS_Object ***pDirs,
@@ -203,7 +203,7 @@ fasterNftw(
         (*pDirs)[i] = (FS_Object*)calloc (sizeof(FS_Object), 1);
         if(paths[i][len-1] == PATH_SEP_CHR) len--;
         (*pDirs)[i]->baseName = calloc (1+len, sizeof(char));
-        (*pDirs)[i]->depth = getNumTokens (paths[i], PATH_SEP_CHR);
+        (*pDirs)[i]->depth = getNumTokens (paths[i], PATH_SEP_STR);
         memcpy ((*pDirs)[i]->baseName, paths[i], len);
         if(callback) callback ((*pDirs)[i], cbArgs);
     }

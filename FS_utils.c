@@ -1,3 +1,5 @@
+#include <strHelper.h>
+#include <fasterNftw.h>
 
 /**
  * Get the nth-level parent of the given FS object
@@ -93,7 +95,7 @@ fileToFSObjs (
         return NULL;
     }
     close (fid);
-    pathComps->num = getTokens (filename, &path, '/');
+    pathComps->num = getTokens (filename, &path, PATH_SEP_STR);
     pathComps->data = (void*)path;
     for(i = 0; i<pathComps->num; i++)
     {
@@ -121,9 +123,9 @@ fileToFSObjs (
 }
 
 static void*
-_getFSTokens(
+_getAllFSTokens(
     FS_Object *fs,
-    char sep,
+    char *sep,
     array *pImpFlds
     )
 {
@@ -138,6 +140,7 @@ _getFSTokens(
     int		  nImpFlds    = (int)(pImpFlds?pImpFlds->num:0);
     int		  nNewKeyFlds = 0;
     fields_t	 *tmp	      = NULL;
+    char         *cTmp        = NULL;
     int i;
     int j;
 
@@ -152,8 +155,10 @@ _getFSTokens(
 
     nEntFlds = getTokens (fs->baseName, &pEntFlds, sep);
     nNewKeyFlds = nKeyFldDds;
+    cTmp = getFullName (fs);
     printf ("%s:%d %d %d %s\n", __FUNCTION__, __LINE__, nEntFlds, nNewKeyFlds,
-            getFullName (fs));
+            cTmp);
+    CHK_FREE (cTmp);
     /* get how many fields to store */
     for(i=0;i<nEntFlds;i++)
     {
@@ -173,46 +178,351 @@ _getFSTokens(
     (*ds)->numFields = nFldDds + nEntFlds;
     (*ds)->impFields.num   = nNewKeyFlds;
     (*ds)->impFields.size  = sizeof(fields_t);
-    tmp = (fields_t*)calloc (sizeof(fields_t), nNewKeyFlds);
-    (*ds)->impFields.data = (void*)tmp;
-
-    memcpy (tmp, pKeyFlds, sizeof(fields_t)*nKeyFldDds);
-    for( i=nKeyFldDds, j=0;i<nNewKeyFlds && j<nEntFlds;j++)
+    if(nNewKeyFlds)
     {
-        int k;
-        /* check if this is to be stored */
-        for(k=0;k<nImpFlds;k++)
-	    if(impFlds[k] == j+nFldDds)
-                break;
-        if( nImpFlds && k >= nImpFlds ) continue;
-        else if ( nImpFlds == 0) k = i;
-        else k = impFlds[k];
-
-        printf ("%s:%d %d %d %s\n", __FUNCTION__, __LINE__, i, j, pEntFlds[j]);
-	tmp[i].idx   = k;
-	tmp[i].field = calloc(1+strlen(pEntFlds[j]), sizeof(char));
-	memcpy (tmp[i].field, pEntFlds[j], 1+strlen(pEntFlds[j]));
-        i++;
+        tmp = (fields_t*)calloc (sizeof(fields_t), nNewKeyFlds);
+        (*ds)->impFields.data = (void*)tmp;
+        for(i=0; i<nKeyFldDds; i++)
+        {
+            tmp[i].idx   = pKeyFlds[i].idx;
+            tmp[i].field = calloc(1+strlen(pKeyFlds[i].field), sizeof(char));
+            memcpy (tmp[i].field, pKeyFlds[i].field, 1+strlen(pKeyFlds[i].field));
+        }
+        for( j=0;i<nNewKeyFlds && j<nEntFlds;j++)
+        {
+            int k;            
+            /* check if this is to be stored */
+            for(k=0;k<nImpFlds;k++)
+                if(impFlds[k] == j+nFldDds)
+                    break;
+            if( nImpFlds && k >= nImpFlds ) continue;
+            else if ( nImpFlds == 0) k = i;
+            else k = impFlds[k];
+            
+//            printf ("%s:%d %d %d %s\n", __FUNCTION__, __LINE__, i, j, pEntFlds[j]);
+            tmp[i].idx   = k;
+            tmp[i].field = calloc(1+strlen(pEntFlds[j]), sizeof(char));
+            memcpy (tmp[i].field, pEntFlds[j], 1+strlen(pEntFlds[j]));
+            i++;
+        }
     }
     for(i=0;i<nEntFlds;i++)
 	CHK_FREE (pEntFlds[i]);
+    CHK_FREE (pEntFlds);
     printf ("%s:%d dds=%d ent = %d new_key = %d fld_dds=%d key_fld_dds=%d \n",
             __FUNCTION__, __LINE__, nFldDds, nEntFlds, nNewKeyFlds, nFldDds, nKeyFldDds);
     return ((void*)ds);
 }
 
 void *
-getFSTokens(
+getAllFSTokens(
     FS_Object *fs,
     void *vargs
     )
 {
     char **args  = (char**)vargs;
-    char   sep   = *(args[0]);
+    char  *sep   = args[0];
     array *pImpFlds = (array*)args[1];
 
-    fs->userData = _getFSTokens(fs, sep, pImpFlds);
+    fs->userData = _getAllFSTokens(fs, sep, pImpFlds);
 
     printUserData (fs->userData);
     return NULL;
+}
+
+static void*
+_getFileTokens(
+    FS_Object *fs,
+    char *sep,
+    array *pImpFlds
+    )
+{
+    pathFields	 *dds	      = NULL;	/* dds = dot dot slash or parent */
+    pathFields	**ds	      = NULL;	/* ds = dot slash or curent */
+    int		  nFldDds     = 0;	/* number of fields till dds */
+    int		  nKeyFldDds  = 0;	/* number of key fields till dds */
+    int		  nEntFlds    = 0;	/* number of Flds in this entry */
+    char	**pEntFlds    = NULL;	/* actual fields in this entry */
+    fields_t     *pKeyFlds    = NULL;	/* actual array of key fields till dds */
+    int		 *impFlds     = (int*)(pImpFlds?pImpFlds->data:NULL);
+    int		  nImpFlds    = (int)(pImpFlds?pImpFlds->num:0);
+    int		  nNewKeyFlds = 0;
+    fields_t	 *tmp	      = NULL;
+    char         *cTmp        = NULL;
+    int i;
+    int j;
+
+    /* get details of parent fields */
+    if(fs->parent && fs->parent->userData && *(fs->parent->userData))
+    {
+	dds     = (pathFields*)(*(fs->parent->userData));
+	nFldDds = dds->numFields;
+	nKeyFldDds = dds->impFields.num;
+	pKeyFlds   = (fields_t*)(dds->impFields.data);
+    }
+    else /* the parent dieectory has not been parsed for tokens, do it now */
+    {
+    }
+
+    nEntFlds = getTokens (fs->baseName, &pEntFlds, sep);
+    nNewKeyFlds = nKeyFldDds;
+    cTmp = getFullName (fs);
+    printf ("%s:%d %d %d %s\n", __FUNCTION__, __LINE__, nEntFlds, nNewKeyFlds,
+            cTmp);
+    CHK_FREE (cTmp);
+    /* get how many fields to store */
+    for(i=0;i<nEntFlds;i++)
+    {
+        printf ("\t\t%d %s\n", i, pEntFlds[i]);
+        if(nImpFlds == 0)
+            nNewKeyFlds++;
+    	for(j=0;j<nImpFlds;j++)
+	    if(impFlds[j] == i+nFldDds)
+		nNewKeyFlds++;
+    }
+
+    printf ("%s:%d dds=%d ent = %d new_key = %d fld_dds=%d key_fld_dds=%d \n",
+            __FUNCTION__, __LINE__, nFldDds, nEntFlds, nNewKeyFlds, nFldDds, nKeyFldDds);
+
+    ds = (pathFields**)calloc (sizeof(pathFields*), 1);
+    *ds  = (pathFields*)calloc (sizeof(pathFields), 1);
+    (*ds)->numFields = nFldDds + nEntFlds;
+    (*ds)->impFields.num   = nNewKeyFlds;
+    (*ds)->impFields.size  = sizeof(fields_t);
+    if(nNewKeyFlds)
+    {
+        tmp = (fields_t*)calloc (sizeof(fields_t), nNewKeyFlds);
+        (*ds)->impFields.data = (void*)tmp;
+        for(i=0; i<nKeyFldDds; i++)
+        {
+            tmp[i].idx   = pKeyFlds[i].idx;
+            tmp[i].field = calloc(1+strlen(pKeyFlds[i].field), sizeof(char));
+            memcpy (tmp[i].field, pKeyFlds[i].field, 1+strlen(pKeyFlds[i].field));
+        }
+        for( j=0;i<nNewKeyFlds && j<nEntFlds;j++)
+        {
+            int k;            
+            /* check if this is to be stored */
+            for(k=0;k<nImpFlds;k++)
+                if(impFlds[k] == j+nFldDds)
+                    break;
+            if( nImpFlds && k >= nImpFlds ) continue;
+            else if ( nImpFlds == 0) k = i;
+            else k = impFlds[k];
+            
+//            printf ("%s:%d %d %d %s\n", __FUNCTION__, __LINE__, i, j, pEntFlds[j]);
+            tmp[i].idx   = k;
+            tmp[i].field = calloc(1+strlen(pEntFlds[j]), sizeof(char));
+            memcpy (tmp[i].field, pEntFlds[j], 1+strlen(pEntFlds[j]));
+            i++;
+        }
+    }
+    for(i=0;i<nEntFlds;i++)
+	CHK_FREE (pEntFlds[i]);
+    CHK_FREE (pEntFlds);
+    printf ("%s:%d dds=%d ent = %d new_key = %d fld_dds=%d key_fld_dds=%d \n",
+            __FUNCTION__, __LINE__, nFldDds, nEntFlds, nNewKeyFlds, nFldDds, nKeyFldDds);
+    return ((void*)ds);
+}
+
+void *
+getFileTokens(
+    FS_Object *fs,
+    void *vargs
+    )
+{
+    char **args  = (char**)vargs;
+    char  *sep   = args[0];
+    array *pImpFlds = (array*)args[1];
+
+    fs->userData = _getFileTokens(fs, sep, pImpFlds);
+
+    printUserData (fs->userData);
+    return NULL;
+}
+
+
+#ifdef EIV_DBG
+#define EIV_DBG_PRINTF printf
+#else
+#define EIV_DBG_PRINTF(...)
+#endif
+
+#define GET_FIELDS_PTR_FSO(o, f)                                \
+    do{                                                         \
+        if(o && o->userData)                                    \
+        {                                                       \
+            pathFields *ptr = *((pathFields**)(o->userData));   \
+            if(ptr)                                             \
+            {                                                   \
+                array fld = ptr->impFields;                     \
+                f  = (fields_t *)fld.data;                      \
+            }                                                   \
+        }                                                       \
+    }while(0)
+
+#define GET_PATHFIELDS_PTR_FSO(o , a)                           \
+    do{                                                         \
+        if(o && o->userData)                                    \
+        {                                                       \
+            pathFields *ptr = *((pathFields**)(o->userData));   \
+            if(ptr)                                             \
+            {                                                   \
+                a = ptr->impFields;                             \
+            }                                                   \
+        }                                                       \
+    }while(0)
+
+void *gSortStruct = NULL;
+
+void freeFields (FS_Object *o)
+{
+    fields_t *f = NULL;
+    pathFields *p = NULL;
+    int i;
+    GET_FIELDS_PTR_FSO (o, f);
+    if(f)
+    {
+        p = *((pathFields**)(o->userData));
+        for( i = 0; i<p->impFields.num; i++)
+        {
+//            printf ("%d %p %s\n", i, f[i].field, f[i].field);
+            CHK_FREE (f[i].field);
+        }
+    }
+    if(p)
+        CHK_FREE (p->impFields.data);
+}
+
+/** 
+ * 
+ * 
+ * @param Obj1      first file
+ * @param Obj2      second file
+ * @param tokens    list of tokens by whichto sort/compare
+ * @param tokOrd    type of ordering of tokens (1: asc, -1 desc)x(1: char, 2:numeric)
+ * @param nTokens   
+ * 
+ * @return          (obj1<obj2)?-1:(obj1>obj2)?1:0
+ */
+
+int
+compareByToks (void *Obj1, void *Obj2, void *args)
+{
+    FS_Object  *o1 = *((FS_Object**)Obj1);
+    FS_Object  *o2 = *((FS_Object**)Obj2);
+
+    pathFields *p1 = *((pathFields**)(o1->userData));
+    pathFields *p2 = *((pathFields**)(o2->userData));
+
+    fields_t *f1 = NULL;
+    fields_t *f2 = NULL;
+
+    void **sortStruct = (void**)gSortStruct;
+    int *tokens = (int*)sortStruct[0];
+    int *tokOrd = (int*)sortStruct[1];
+    int nTokens = *((int*)sortStruct[2]);
+    int i;
+    int r = 0;
+
+    GET_FIELDS_PTR_FSO (o1, f1);
+    GET_FIELDS_PTR_FSO (o2, f2);
+
+    EIV_DBG_PRINTF ("compare %s %s\n", getFullName (o1), getFullName (o2));
+    
+    for(i = 0; i< nTokens; i++)
+    {
+        int t = tokens[i];
+        int s;
+        int k;
+        for(k = 0; k<nTokens; k++)
+        {            
+            if(k<p1->impFields.num && f1[k].idx == t) break;
+        }
+        if ( k >= nTokens )
+        {            
+            EIV_DBG_PRINTF ("bad token i: %d k: %d p1->impFields: %d p2->impFields: %d\n", i, k,
+                            p1->impFields.num, p2->impFields.num);
+            return r;
+        }
+        s = tokOrd && tokOrd[k]<0?-1:1;
+        t = tokOrd?tokOrd[k]/s:1;
+        if(k< p1->impFields.num && k<p2->impFields.num)
+        {
+            if( t == 1)
+                r = s*strcmp (f1[k].field, f2[k].field);
+            else
+                r = s*atoi (f1[k].field)-atoi (f2[k].field);
+            EIV_DBG_PRINTF ("\tgood: %d %s %s %d\n", k, f1[k].field, f2[k].field, r);            
+        }
+        else if (k>=p1->impFields.num && k < p2->impFields.num)
+        {
+            EIV_DBG_PRINTF ("\tp1 bad: %d %s %s %d\n", k, "NULL", f2[k].field, r);
+            r=-1;
+        }
+        else if (k<p1->impFields.num && k >= p2->impFields.num)
+        {
+            EIV_DBG_PRINTF ("\tp2 bad %d %s %s %d\n", k, f1[k].field, "NULL", r);
+            r= 1;
+        }
+        else
+        {
+            return 0;
+        }
+        if(r) return r;
+    }
+    return 0;
+}
+
+void sortByTokens (
+    FS_Object **pObjs,
+    int nObjs,
+    int *sortFlds,
+    int *sortOrd,
+    int nSortFlds
+    )
+{
+    int i;
+    int j;
+    void *sortStruct[] = {(void*)sortFlds, (void*)sortOrd, (void*)&nSortFlds};
+    gSortStruct = sortStruct;
+    nObjs = 5;
+    EIV_DBG_PRINTF ("%p %p %p ", pObjs, pObjs[0], pObjs[1]);
+    EIV_DBG_PRINTF ("%p %p %p | ", pObjs[2], pObjs[3], pObjs[4]);
+    EIV_DBG_PRINTF ("%p %p ", pObjs[0]->userData, pObjs[1]->userData);
+    EIV_DBG_PRINTF ("%p %p %p ", pObjs[2]->userData, pObjs[3]->userData, pObjs[4]->userData);
+    EIV_DBG_PRINTF ("%s %s ", getFullName (pObjs[0]), getFullName (pObjs[1]));
+    EIV_DBG_PRINTF ("%s %s ", getFullName (pObjs[2]), getFullName (pObjs[3]));
+    EIV_DBG_PRINTF ("%s\n", getFullName (pObjs[4]));
+    for(i=0; i<nObjs; i++)
+    {
+        for(j=i+1; j<nObjs; j++)
+        {
+            int result = compareByToks (&pObjs[i], &pObjs[j], sortStruct);
+            if( result == 1)
+            {
+#if 0
+                SWAP (pObjs[i], pObjs[j], sizeof(FS_Object*));
+#elif 0//TEST_CODE
+                char *t1 = calloc (sizeof(FS_Object*), 1);
+                memcpy (t1, &pObjs[i], sizeof(FS_Object*));
+                memcpy (&pObjs[i], &pObjs[j], sizeof(FS_Object*));
+                memcpy (&pObjs[j], t1, sizeof(FS_Object*));
+#else
+                FS_Object *t = pObjs[i];
+                pObjs[i] = pObjs[j];
+                pObjs[j] = t;
+#endif
+            }
+        }
+        EIV_DBG_PRINTF ("%d: %p %p %p ", i, pObjs, pObjs[0], pObjs[1]);
+        EIV_DBG_PRINTF ("%p %p %p | ", pObjs[2], pObjs[3], pObjs[4]);
+        EIV_DBG_PRINTF ("%p %p ", pObjs[0]->userData, pObjs[1]->userData);
+        EIV_DBG_PRINTF ("%p %p %p ", pObjs[2]->userData, pObjs[3]->userData, pObjs[4]->userData);
+        EIV_DBG_PRINTF ("%s %s ", getFullName (pObjs[0]), getFullName (pObjs[1]));
+        EIV_DBG_PRINTF ("%s %s ", getFullName (pObjs[2]), getFullName (pObjs[3]));
+        EIV_DBG_PRINTF ("%s\n", getFullName (pObjs[4]));
+    }
+
+    qsort_r(&pObjs[0], nObjs, sizeof(FS_Object*), compareByToks, (void*)sortStruct);
 }

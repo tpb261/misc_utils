@@ -1,3 +1,5 @@
+#ifndef _STR_HELPER_H
+#define _STR_HELPER_H
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -11,7 +13,7 @@ typedef char* my_string ;
  * 
  * @return depth of folder/file
  */
-int getNumTokens (char *path, char token);
+int getNumTokens (char *path, char *token);
 
 /** 
  * Tokenize a string into tokens
@@ -22,5 +24,6 @@ int getNumTokens (char *path, char token);
  * 
  * @return        number of tokens
  */
-int getTokens (char *path, char ***tokens, char token);
+int getTokens (char *path, char ***tokens, char *token);
 
+#endif

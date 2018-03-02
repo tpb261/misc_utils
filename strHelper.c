@@ -10,18 +10,28 @@
 #endif
 
 /** 
- * returns number of folders along the path given
+ * returns number of tokens in string
  * 
- * @param path Path for which depth is required
+ * @param path String to tokenize
  * 
- * @return depth of folder/file
+ * @return number of tokens
  */
-int getNumTokens (char *path, char token)
+int getNumTokens (char *path, char *tokens)
 {
-    int depth = path && *path?1:0;
-    for(;path && *path; path++)
-        if(*path == token && *(path+1)) /* ignore the final / or \ */
-            depth++;
+    int depth = 0;//(path && (NULL=strchr (*path, tokens)))?1:0;
+
+    if(!path) return 0;
+    
+    while(*path)
+    {
+        /* keep moving as long as we see characters from the tokens */
+        while(*path && strchr (tokens, *path))
+            path++;
+        if(*path) depth++;
+        /* keep moving as long as we see non-tokenizing characters */
+        while(*path && !strchr (tokens, *path))
+            path++;
+    }
     return depth;
 }
 
@@ -34,22 +44,32 @@ int getNumTokens (char *path, char token)
  * 
  * @return        number of tokens
  */
-int getTokens (char *path, char ***tokens, char token)
+int getTokens (char *path, char ***fields, char *tokens)
 {
-    int numTokens = getNumTokens (path, token);
+    int numTokens = getNumTokens (path, tokens);
     int i = 0;
     int j = 0;
     int k = 0;
-    *tokens = calloc (numTokens, sizeof(char*));
-    for(i=0; i<numTokens; i++, j++)
+    *fields = calloc (numTokens, sizeof(char*));
+
+    if(strchr (path, '_'))
     {
-        for(k=j; path[j] && path[j]!=token; j++);
+        printf ("I'm here\n");
+    }
+    
+    for(i=0; i<numTokens; i++)
+    {
+        /* keep moving as long as we see non-tokenizing characters */
+        for(k=j; path[j] && !strchr (tokens, path[j]); j++);
         str_dbg_printf ("%s:%d %s \n", __FUNCTION__, __LINE__, path+j);
-        (*tokens)[i] = calloc (j-k+1, sizeof(char));
-        memcpy ((*tokens)[i], path+k, j-k);
-        str_dbg_printf ("%s:%d %s %s\n", __FUNCTION__, __LINE__, (*tokens)[i], path+k);
+
+        (*fields)[i] = calloc (j-k+1, sizeof(char));
+        memcpy ((*fields)[i], path+k, j-k);
+
+        /* keep moving as long as we see tokenizing characters */
+        for(; path[j] && strchr (tokens, path[j]); j++);
+        str_dbg_printf ("%s:%d %s %s\n", __FUNCTION__, __LINE__, (*fields)[i], path+j);
     }
     str_dbg_printf ("numTokens = %d\n", numTokens);
     return numTokens;
 }
-
