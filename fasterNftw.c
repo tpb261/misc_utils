@@ -30,6 +30,7 @@ For more information, please refer to <http://unlicense.org>
 */
 #include <fasterNftw.h>
 #include <strHelper.h>
+#include <string.h>
 
 #if 1//USE_MT_MODE
 #include <pthread.h>
@@ -101,7 +102,7 @@ static int getDirContents(
                 continue;
 
         i = (ent->d_type == DT_DIR?1:0);
-        if((antiPat && antiPat[i] && strcasestr (ent->d_name, antiPat[i]))
+        if((antiPat && antiPat[i] && strcasestr(ent->d_name, antiPat[i]))
            || (pat && pat[i]  && !strcasestr (ent->d_name, pat[i])))
             continue;
 
