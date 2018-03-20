@@ -13,6 +13,8 @@
 #include <unistd.h>
 
 #include <strHelper.h>
+//#include <FS_utils.h>
+#include <array.h>
 
 typedef struct _FS_Object_
 {
@@ -25,25 +27,6 @@ typedef struct _FS_Object_
     void **userData;
 }FS_Object;
 
-
-typedef struct _array_s_
-{
-    int num;
-    int size;
-    char *data;
-}array;
-
-typedef struct _pathFields_t
-{
-    int numFields;
-    array impFields;
-}pathFields;
-
-typedef struct _fields_t_
-{
-    int idx;
-    char *field;
-}fields_t;
 typedef int(*fpNftwCb)(FS_Object *, void *);
 
 typedef struct _direContent_t
@@ -62,8 +45,6 @@ typedef struct _direContent_t
 }dirContent_t;
 
 char *getFullName (FS_Object *f);
-
-#define CHK_FREE(p) if(p) free (p);
 
 #define PATH_SEP_CHR '/'
 #define PATH_SEP_STR "/"

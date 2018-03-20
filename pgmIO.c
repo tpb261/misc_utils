@@ -98,7 +98,6 @@ int getEndianness()
     return (*p == 1?MSB_FIRST:LSB_FIRST);
 }
 
-
 char *readline (FILE *fp)
 {
     char  *comment = NULL;
@@ -231,7 +230,6 @@ int readData (
         }
     }
 }
-    
 
 int readPgm (
     char *filename,
@@ -331,7 +329,7 @@ cleanup:
     if(fp) fclose (fp);
 }
 
-#if UNIT_TEST
+#if 0//UNIT_TEST
 int main()
 {
     char *comments[] = {"comment 1", "comment 2", "comment 3"};
