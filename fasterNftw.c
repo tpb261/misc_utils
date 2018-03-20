@@ -31,6 +31,7 @@ For more information, please refer to <http://unlicense.org>
 #include <fasterNftw.h>
 #include <strHelper.h>
 #include <string.h>
+#include <FS_utils.h>
 
 #if 1//USE_MT_MODE
 #include <pthread.h>
@@ -102,6 +103,7 @@ static int getDirContents(
                 continue;
 
         i = (ent->d_type == DT_DIR?1:0);
+        /* this can go into callback */
         if((antiPat && antiPat[i] && strcasestr(ent->d_name, antiPat[i]))
            || (pat && pat[i]  && !strcasestr (ent->d_name, pat[i])))
             continue;
@@ -111,20 +113,28 @@ static int getDirContents(
         f.baseName   = calloc (entNameLen+1, sizeof(char));
         f.depth  = parent->depth+1;
         memcpy (f.baseName, ent->d_name, entNameLen+1);
-        if(callback) callback (&f, cbArgs);
+        if(ent->d_type == DT_DIR)
+            f.dirName = getFullName (parent);
+        if ( callback && callback (&f, cbArgs) == 0 )
+        {
+            /* discard this data */
+            freeFields(&f);
+            CHK_FREE (f.baseName);
+            CHK_FREE (f.dirName);
+            continue;
+        }
         if( ent->d_type == DT_DIR)
         {
             num = ++(*nSubDirs);
             ptr = pDirs;
             parent->numSubDirs++;
-            f.dirName = getFullName (parent);
         }
 	else if( ent->d_type == DT_REG)
         {
             num = ++(*nFiles);
             parent->numFiles++;
             ptr = pFiles;
-        }
+        }        
         *ptr = realloc (*ptr, num*sizeof(FS_Object*));
         (*ptr)[num-1] = (FS_Object*)calloc (sizeof(FS_Object), 1);
         memcpy ((*ptr)[num-1], &f, sizeof(FS_Object));
@@ -206,7 +216,13 @@ fasterNftw(
         (*pDirs)[i]->baseName = calloc (1+len, sizeof(char));
         (*pDirs)[i]->depth = getNumTokens (paths[i], PATH_SEP_STR);
         memcpy ((*pDirs)[i]->baseName, paths[i], len);
-        if(callback) callback ((*pDirs)[i], cbArgs);
+        if(callback && callback ((*pDirs)[i], cbArgs) == 0 )
+        {
+            /* discard this data */
+            freeFields((*pDirs)[i]);
+            CHK_FREE ((*pDirs)[i]->baseName);
+            CHK_FREE ((*pDirs)[i]);
+        }
     }
     if(*nSubDirs == 0)    *nSubDirs = numPaths;
 

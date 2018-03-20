@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strHelper.h>
+#include <ctype.h>
 
 #if STR_DBG_PRINTF
 #define str_dbg_printf printf
@@ -72,4 +73,22 @@ int getTokens (char *path, char ***fields, char *tokens)
     }
     str_dbg_printf ("numTokens = %d\n", numTokens);
     return numTokens;
+}
+
+char* strcasestr (const char *hayStack, const char *needle)
+{
+    char *hS= calloc (1+strlen (hayStack), sizeof(char));
+    char *soodi = calloc (1+strlen (needle), sizeof(char));
+    char *t;
+    const char *s;
+
+    for(t=hS, s=hayStack; *s; s++, t++)
+        *t = tolower (*s);
+    for(t=soodi, s=needle; *s; s++)
+        *t = tolower (*s);
+
+    t = strstr (hS, soodi);
+    s = t?&hayStack[t - hS]:NULL;
+    CHK_FREE (hS);
+    CHK_FREE (soodi);
 }

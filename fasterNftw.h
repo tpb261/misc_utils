@@ -25,7 +25,6 @@ typedef struct _FS_Object_
     void **userData;
 }FS_Object;
 
-typedef void*(*fpNftwCb)(FS_Object *, void *);
 
 typedef struct _array_s_
 {
@@ -45,6 +44,7 @@ typedef struct _fields_t_
     int idx;
     char *field;
 }fields_t;
+typedef int(*fpNftwCb)(FS_Object *, void *);
 
 typedef struct _direContent_t
 {

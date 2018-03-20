@@ -1,6 +1,6 @@
 #include <strHelper.h>
-#include <fasterNftw.h>
 #include <FS_utils.h>
+//#include <fasterNftw.h>
 
 void printUserData (void *userData);
 
@@ -125,7 +125,7 @@ fileToFSObjs (
     return o1;
 }
 
-static void*
+static void *
 _getAllFSTokens(
     FS_Object *fs,
     char *sep,
@@ -202,7 +202,7 @@ _getAllFSTokens(
             else if ( nImpFlds == 0) k = i;
             else k = impFlds[k];
             
-//            printf ("%s:%d %d %d %s\n", __FUNCTION__, __LINE__, i, j, pEntFlds[j]);
+            printf ("%s:%d %d %d %s\n", __FUNCTION__, __LINE__, i, j, pEntFlds[j]);
             tmp[i].idx   = k;
             tmp[i].field = calloc(1+strlen(pEntFlds[j]), sizeof(char));
             memcpy (tmp[i].field, pEntFlds[j], 1+strlen(pEntFlds[j]));
@@ -217,7 +217,7 @@ _getAllFSTokens(
     return ((void*)ds);
 }
 
-void *
+int
 getAllFSTokens(
     FS_Object *fs,
     void *vargs
@@ -226,15 +226,15 @@ getAllFSTokens(
     char **args  = (char**)vargs;
     char  *sep   = args[0];
     array *pImpFlds = (array*)args[1];
-
+    /* check args for patterns and anti-patterns */
     fs->userData = _getAllFSTokens(fs, sep, pImpFlds);
 
     printUserData (fs->userData);
-    return NULL;
+    return 1;
 }
 
 #if 0
-static void*
+static int
 _getFileTokens(
     FS_Object *fs,
     char *sep,
@@ -335,7 +335,7 @@ _getFileTokens(
     return ((void*)ds);
 }
 
-void *
+int
 getFileTokens(
     FS_Object *fs,
     void *vargs
@@ -344,22 +344,21 @@ getFileTokens(
     char **args  = (char**)vargs;
     char  *sep   = args[0];
     array *pImpFlds = (array*)args[1];
-
+    /* check args for patterns and anti-patterns */
     fs->userData = _getFileTokens(fs, sep, pImpFlds);
 
     printUserData (fs->userData);
-    return NULL;
+    return 1;
 }
 #endif
 
-
-#ifdef EIV_DBG
+#if 1//def EIV_DBG
 #define EIV_DBG_PRINTF printf
 #else
 #define EIV_DBG_PRINTF(...)
 #endif
 
-void *gSortStruct = NULL;
+//void *gSortStruct = NULL;
 
 /** 
  * 
@@ -439,7 +438,13 @@ compareByToks (void *Obj1, void *Obj2, void *args)
         }
         else
         {
-            return 0;
+            /* worst case - fall back to comparing names */
+            char *n1 = getFullName (o1);
+            char *n2 = getFullName (o2);
+            r = strcmp (n1, n2);
+            CHK_FREE (n1);
+            CHK_FREE (n2);
+            
         }
         if(r) return (s*r);
     }
@@ -457,7 +462,7 @@ void sortByTokens (
     int i;
     int j;
     void *sortStruct[] = {(void*)sortFlds, (void*)sortOrd, (void*)&nSortFlds};
-    gSortStruct = sortStruct;
+//    gSortStruct = sortStruct;
     nObjs = 5;
     if(nObjs <= 0 || !pObjs) return ;
     EIV_DBG_PRINTF ("%p %p %p ", pObjs, pObjs[0], pObjs[1]);
@@ -492,7 +497,23 @@ void sortByTokens (
     }
 #endif
 
-    qsort_r(&pObjs[0], nObjs, sizeof(FS_Object*), compareByToks, (void*)sortStruct);
+//    qsort_r(&pObjs[0], nObjs, sizeof(FS_Object*), compareByToks, (void*)sortStruct);
+}
+
+int getIndexOfField (
+    FS_Object *o1,
+    int fieldIdx
+    )
+{
+    pathFields *p1 = *(pathFields**)(o1->userData);
+    fields_t *f1 = NULL;
+    int i;
+    GET_FIELDS_PTR_FSO (o1, f1);
+    for(i=0; i<p1->impFields.num; i++)
+    {
+        if(fieldIdx == f1[i].idx) return i;
+    }
+    return -1;
 }
 
 void freeFields (FS_Object *o)

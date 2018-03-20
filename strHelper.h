@@ -6,6 +6,8 @@
 
 typedef char* my_string ;
 
+#define CHK_FREE(p) if(p) free (p)
+
 /** 
  * returns number of folders along the path given
  * 
@@ -25,5 +27,7 @@ int getNumTokens (char *path, char *token);
  * @return        number of tokens
  */
 int getTokens (char *path, char ***tokens, char *token);
+
+char* strcasestr (const char *hayStack, const char *needle);
 
 #endif

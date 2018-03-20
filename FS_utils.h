@@ -2,6 +2,19 @@
 #define _FS_UTILS_H_
 #include <strHelper.h>
 #include <fasterNftw.h>
+#include <array.h>
+
+typedef struct _pathFields_t
+{
+    int numFields;
+    array impFields;
+}pathFields;
+
+typedef struct _fields_t_
+{
+    int idx;
+    char *field;
+}fields_t;
 
 /**
  * Get the nth-level parent of the given FS object
@@ -13,7 +26,7 @@
  *
  * @return FS_object of the n-th parent
  */
-FS_Object* getToNthPaent (FS_Object *F, int n, char **name);
+struct _FS_Object_* getToNthPaent (struct _FS_Object_ *F, int n, char **name);
 
 /**
  * Get the full path and filename in one string
@@ -22,22 +35,26 @@ FS_Object* getToNthPaent (FS_Object *F, int n, char **name);
  *
  * @return full name string
  */
-char *getFullName (FS_Object *f);
+char *getFullName (struct _FS_Object_ *f);
 
+void* printer (void* fmt, struct _FS_Object_ *f, void (*printUserData)(void*));
 
-void* printer (void* fmt, FS_Object *f, void (*printUserData)(void*));
+void sortByTokens ( struct _FS_Object_ **pObjs, int nObjs, int *sortFlds, int *sortOrd, int nSortFlds);
 
-void sortByTokens ( FS_Object **pObjs, int nObjs, int *sortFlds, int *sortOrd, int nSortFlds);
+struct _FS_Object_* fileToFSObjs ( char *filename);
 
-FS_Object* fileToFSObjs ( char *filename);
+int getFSTokens( struct _FS_Object_ *fs, void *vargs);
 
-void * getFSTokens( FS_Object *fs, void *vargs);
+int getAllFSTokens( struct _FS_Object_ *fs, void *vargs);
 
-void * getAllFSTokens( FS_Object *fs, void *vargs);
+int getFileTokens(struct _FS_Object_ *fs, void *vargs);
 
-void * getFileTokens(FS_Object *fs, void *vargs);
+void freeFields (struct _FS_Object_ *o);
 
-void freeFS_Objects (FS_Object **args, int nArgs);
+void freeFS_Objects (struct _FS_Object_ **args, int nArgs);
+
+int getIndexOfField (FS_Object *o1, int fieldIdx);
+
 
 #define GET_FIELDS_PTR_FSO(o, f)                                \
     do{                                                         \
