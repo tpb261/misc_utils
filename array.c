@@ -71,7 +71,7 @@ array * concatArrays (
 
     if(a1.num != a2.num || a1.size != a2.size) return p;
 
-    p = (array*)calloc (sizeof(array));
+    p = (array*)calloc (sizeof(array), 1);
     p->num = a1.num+a2.num;
     p->size = a1.size;
     p->data = calloc (p->num, p->size);

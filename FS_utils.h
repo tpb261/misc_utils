@@ -26,7 +26,7 @@ typedef struct _fields_t_
  *
  * @return FS_object of the n-th parent
  */
-struct _FS_Object_* getToNthPaent (struct _FS_Object_ *F, int n, char **name);
+FS_Object* getToNthPaent (FS_Object *F, int n, char **name);
 
 /**
  * Get the full path and filename in one string
@@ -35,23 +35,24 @@ struct _FS_Object_* getToNthPaent (struct _FS_Object_ *F, int n, char **name);
  *
  * @return full name string
  */
-char *getFullName (struct _FS_Object_ *f);
+char *getFullName (FS_Object *f);
 
-void* printer (void* fmt, struct _FS_Object_ *f, void (*printUserData)(void*));
 
-void sortByTokens ( struct _FS_Object_ **pObjs, int nObjs, int *sortFlds, int *sortOrd, int nSortFlds);
+void* printer (void* fmt, FS_Object *f, void (*printUserData)(void*));
 
-struct _FS_Object_* fileToFSObjs ( char *filename);
+void sortByTokens ( FS_Object **pObjs, int nObjs, int *sortFlds, int *sortOrd, int nSortFlds);
 
-int getFSTokens( struct _FS_Object_ *fs, void *vargs);
+FS_Object* fileToFSObjs ( char *filename);
 
-int getAllFSTokens( struct _FS_Object_ *fs, void *vargs);
+int getFSTokens(FS_Object *fs, void *vargs);
 
-int getFileTokens(struct _FS_Object_ *fs, void *vargs);
+int getAllFSTokens(FS_Object *fs, void *vargs);
 
-void freeFields (struct _FS_Object_ *o);
+int getFileTokens(FS_Object *fs, void *vargs);
 
-void freeFS_Objects (struct _FS_Object_ **args, int nArgs);
+void freeFields (FS_Object *o);
+
+void freeFS_Objects (FS_Object **args, int nArgs);
 
 int getIndexOfField (FS_Object *o1, int fieldIdx);
 
