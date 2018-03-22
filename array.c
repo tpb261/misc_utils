@@ -1,4 +1,5 @@
 #include <array.h>
+#include <strHelper.h>
 
 typedef struct _test_
 {
@@ -22,28 +23,39 @@ array* createArray (
 
 void freeArray (array **A)
 {
-    free ((*A)->data);
-    free (*A);
-    *A = NULL;
+    if(A && *A)
+    {
+        CHK_FREE ((*A)->data);
+        CHK_FREE (*A);
+        *A = NULL;
+    }
 }
 
 char* getDataAt (array *A, int l)
 {
-    return (A->data+l*A->size);
+    if(A)
+        return (A->data+l*A->size);
 }
 
 void setDataAt(array *A,int l, char *p)
 {
-    memcpy(A->data+l*A->size, p, A->size);
+    if(A)
+    {
+        memcpy(A->data+l*A->size, p, A->size);
+    }
 }
 
 void addElement (
     array *A,
     char *e
     )
-{    
-    A->data = (char*)realloc (A->data, A->size*(A->num+1));
-    setDataAt (A, A->num, e);
+{
+    if(A)
+    {
+        A->num++;
+        A->data = (char*)realloc (A->data, A->size*(A->num+1));
+        setDataAt (A, A->num, e);
+    }
 }
 
 void insertAt (
@@ -52,13 +64,16 @@ void insertAt (
     char *e    
     )
 {
-    int size = A->size;
-    int num = A->num;
-    if(l>num)
-        return;
-    A->data = realloc (A->data, size*(num+1));
-    memmove (A->data+(l+1)*size, A->data+l*size, size*(num-l));
-    setDataAt (A, l, e);
+    if(A)
+    {
+        int size = A->size;
+        int num = A->num;
+        if(l>num)
+            return;
+        A->data = realloc (A->data, size*(num+1));
+        memmove (A->data+(l+1)*size, A->data+l*size, size*(num-l));
+        setDataAt (A, l, e);
+    }
 }
 
 array * concatArrays (

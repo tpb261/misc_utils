@@ -80,15 +80,16 @@ char* strcasestr (const char *hayStack, const char *needle)
     char *hS= calloc (1+strlen (hayStack), sizeof(char));
     char *soodi = calloc (1+strlen (needle), sizeof(char));
     char *t;
-    const char *s;
+    char *s;
 
-    for(t=hS, s=hayStack; *s; s++, t++)
+    for(t=hS, s=(char*)hayStack; *s; s++, t++)
         *t = tolower (*s);
-    for(t=soodi, s=needle; *s; s++)
+    for(t=soodi, s=(char*)needle; *s; s++, t++)
         *t = tolower (*s);
 
     t = strstr (hS, soodi);
-    s = t?&hayStack[t - hS]:NULL;
+    s = t?(char*)&hayStack[t - hS]:NULL;
     CHK_FREE (hS);
     CHK_FREE (soodi);
+    return s;
 }

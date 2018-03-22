@@ -60,7 +60,7 @@ typedef struct _pgm_format_t_
 {
     char type[2];  /**< P2/P5/ etc */
     int width;     /**< width in pixel units */
-    int height;    /**< height in pixel units */ 
+    int height;    /**< height in pixel units */
     int maxPixVal; /**< bits/pixel = 1, 2 (3 channel is defined by type */
 } pgm_format_s;
 
@@ -161,7 +161,7 @@ int getTokenString (
         {
             (*numComments)++;
             comments = realloc (comments/*, sizeof(char*)*(*numComments-1)*/
-                                   , sizeof(char*)**numComments);            
+                                   , sizeof(char*)**numComments);
             comments[*numComments-1] = readline (fp);
             c = fgetc (fp);
         }
@@ -183,7 +183,7 @@ int getTokenString (
         {
             result = BAD_PGM_NUMERIC_VAL;
             break;
-        }        
+        }
     }
     while(c == '#')
     {
@@ -231,6 +231,7 @@ int readData (
     }
 }
 
+
 int readPgm (
     char *filename,
     int *numFrames,
@@ -251,7 +252,7 @@ int readPgm (
 
     getTokenString (fp, &pgmType, &cols, &rows, &bpp, numComments, pppComments);
     pgm_dbg_printf ("%d %d %d %d\n", rows, cols, bpp, *numComments);
-    
+
     for(i=0; i<*numComments;i++)
     {
         pgm_dbg_printf ("%s\n", (*pppComments)[i]);
@@ -286,7 +287,7 @@ cleanup:
     if(fp) fclose (fp);
     return result;
 }
-    
+
 int writePgm(
     char *fn,
     image_t **pImg,
@@ -299,9 +300,9 @@ int writePgm(
     int len;
     char *fn_frame = NULL;
     int msb_first = getEndianness();
-    
+
     for(len = 0; fn[len]; len++);
-    
+
     fn_frame = malloc (len+3+5);
     if(!fn)
     {
@@ -343,7 +344,7 @@ int main()
     char **ppComments = NULL;
 
     /* this is just UT - don't care for memfree - bad but ok */
-    
+
     for(imgCount = 0; imgCount < 8; imgCount++)
     {
         image_t *pImg = (image_t*)malloc (sizeof(image_t));
@@ -381,8 +382,8 @@ int main()
         {
             pgm_dbg_printf ("screwed\n");
         }
-        pgm_dbg_printf ("%s done \n", fn_frame);        
+        pgm_dbg_printf ("%s done \n", fn_frame);
     }
-    
+
 }
 #endif
